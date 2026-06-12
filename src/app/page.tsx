@@ -1,65 +1,148 @@
-import Image from "next/image";
+'use client';
+
+import React from 'react';
+import { useAuth } from '@/lib/AuthContext';
+import Link from 'next/link';
+import Navbar from '@/components/Navbar';
+import { Play, Image as ImageIcon, Sparkles, BookOpen, Clock, BarChart3, ChevronRight } from 'lucide-react';
 
 export default function Home() {
+  const { user, profile, loading } = useAuth();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <>
+      <Navbar />
+      <main className="container" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 'calc(100vh - 120px)',
+        paddingTop: '40px',
+        paddingBottom: '80px',
+      }}>
+        {/* Hero Section */}
+        <div style={{ textAlign: 'center', maxWidth: '800px', marginBottom: '64px' }}>
+          <div className="badge badge-teacher animate-fade-in" style={{ marginBottom: '20px', padding: '6px 16px', fontSize: '13px' }}>
+            <Sparkles size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+            Next-Gen Learning Experience
+          </div>
+          
+          <h1 className="text-gradient" style={{
+            fontSize: '56px',
+            fontWeight: 850,
+            lineHeight: '1.15',
+            letterSpacing: '-1.5px',
+            marginBottom: '24px'
+          }}>
+            Turn Any Video or Image Into an Interactive Quiz
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          
+          <p style={{
+            fontSize: '19px',
+            lineHeight: '1.6',
+            color: 'rgb(var(--muted))',
+            maxWidth: '640px',
+            margin: '0 auto 40px'
+          }}>
+            Set precise checkpoints that pause and blur media, prompting students to answer questions on the fly. Completely multi-tenant and secure.
           </p>
+
+          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+            {loading ? (
+              <div style={{ color: 'rgb(var(--muted))' }}>Checking status...</div>
+            ) : user ? (
+              <Link href={profile?.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'} className="btn btn-primary" style={{ fontSize: '16px', padding: '14px 28px' }}>
+                Go to Dashboard
+                <ChevronRight size={18} />
+              </Link>
+            ) : (
+              <>
+                <Link href="/auth" className="btn btn-primary" style={{ fontSize: '16px', padding: '14px 28px' }}>
+                  Get Started
+                  <ChevronRight size={18} />
+                </Link>
+                <a href="#features" className="btn btn-secondary" style={{ fontSize: '16px', padding: '14px 28px' }}>
+                  Learn More
+                </a>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Feature Cards Grid */}
+        <div id="features" style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '24px',
+          width: '100%',
+          maxWidth: '1000px',
+          marginTop: '40px'
+        }}>
+          {/* Card 1 */}
+          <div className="glass-panel glass-panel-hover" style={{ padding: '32px', borderRadius: '16px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '10px',
+              background: 'rgba(139, 92, 246, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              color: 'rgb(var(--primary))'
+            }}>
+              <Play size={24} />
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '10px' }}>Timed Video Pauses</h3>
+            <p style={{ color: 'rgb(var(--muted))', fontSize: '14px', lineHeight: '1.5' }}>
+              Add multiple choice, true/false, or open-ended questions at specific timestamps. The video blurs and stops until answered.
+            </p>
+          </div>
+
+          {/* Card 2 */}
+          <div className="glass-panel glass-panel-hover" style={{ padding: '32px', borderRadius: '16px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '10px',
+              background: 'rgba(99, 102, 241, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              color: 'rgb(var(--secondary))'
+            }}>
+              <Clock size={24} />
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '10px' }}>Flash Image Display</h3>
+            <p style={{ color: 'rgb(var(--muted))', fontSize: '14px', lineHeight: '1.5' }}>
+              Show an image for a specific duration (e.g. 5 seconds) before hiding it and prompting the student with a recall question.
+            </p>
+          </div>
+
+          {/* Card 3 */}
+          <div className="glass-panel glass-panel-hover" style={{ padding: '32px', borderRadius: '16px' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '10px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '20px',
+              color: 'rgb(var(--accent))'
+            }}>
+              <BarChart3 size={24} />
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '10px' }}>Real-time Results</h3>
+            <p style={{ color: 'rgb(var(--muted))', fontSize: '14px', lineHeight: '1.5' }}>
+              Get automated scoring on Multiple Choice and True/False questions. Review text responses directly in the teacher portal.
+            </p>
+          </div>
         </div>
       </main>
-    </div>
+    </>
   );
 }
