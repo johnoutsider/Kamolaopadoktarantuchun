@@ -1,5 +1,18 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
+import {
+  getFirestore,
+  Firestore,
+  doc,
+  getDoc,
+  setDoc,
+  addDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+} from 'firebase/firestore';
 
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 const isConfigured = apiKey && !apiKey.startsWith('YOUR_');
@@ -16,15 +29,18 @@ const firebaseConfig = {
 // Only initialize Firebase if real credentials are provided
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let db: Firestore | null = null;
 
 if (isConfigured) {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
+  db = getFirestore(app);
 }
 
-export { auth, isConfigured };
+export { auth, db, isConfigured };
 
-// Keep LocalStorage mock for the database for now, tied to the real Auth UID.
+// ─── Data Interfaces ───────────────────────────────────────────────────────────
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -77,7 +93,8 @@ export interface StudentResponse {
   completedAt: any;
 }
 
-// Helper for LocalStorage
+// ─── LocalStorage Fallback Helpers ────────────────────────────────────────────
+
 const getMockData = (key: string) => {
   if (typeof window === 'undefined') return [];
   const data = localStorage.getItem(key);
@@ -100,13 +117,28 @@ export function generateClassCode(): string {
   return result;
 }
 
-// Fetch user profile
+// ─── User Profile Functions ───────────────────────────────────────────────────
+
+// Fetch user profile — tries Firestore first, falls back to localStorage
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  if (db) {
+    try {
+      const docRef = doc(db, 'users', uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data() as UserProfile;
+      }
+      return null;
+    } catch (err) {
+      console.warn('Firestore unavailable, falling back to localStorage:', err);
+    }
+  }
+  // localStorage fallback
   const users = getMockData('users');
   return users.find((u: any) => u.uid === uid) || null;
 }
 
-// Register user profile
+// Register user profile — tries Firestore first, falls back to localStorage
 export async function createUserProfile(
   user: { uid: string; email: string | null; displayName: string | null },
   role: 'teacher' | 'student',
@@ -114,7 +146,6 @@ export async function createUserProfile(
 ): Promise<UserProfile> {
   let finalClassCode: string | null = null;
   let finalTeacherId: string | null = null;
-  const users = getMockData('users');
 
   if (role === 'teacher') {
     finalClassCode = generateClassCode();
@@ -122,12 +153,49 @@ export async function createUserProfile(
     if (!classCodeOrJoinCode) {
       throw new Error('Class code is required for students');
     }
-    const teacherDoc = users.find((u: any) => u.role === 'teacher' && u.classCode === classCodeOrJoinCode.toUpperCase());
-    if (!teacherDoc) {
-      throw new Error('Invalid Class Code. No teacher found with this code.');
+    const code = classCodeOrJoinCode.toUpperCase();
+
+    // Try Firestore lookup first
+    if (db) {
+      try {
+        const q = query(
+          collection(db, 'users'),
+          where('role', '==', 'teacher'),
+          where('classCode', '==', code)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          throw new Error('Invalid Class Code. No teacher found with this code.');
+        }
+        const teacherDoc = snap.docs[0].data() as UserProfile;
+        finalTeacherId = teacherDoc.uid;
+        finalClassCode = code;
+      } catch (err: any) {
+        if (err.message.startsWith('Invalid Class Code')) throw err;
+        // Firestore error (permissions, not enabled) — fall back to localStorage
+        console.warn('Firestore lookup failed, using localStorage:', err);
+        const users = getMockData('users');
+        const teacherDoc = users.find(
+          (u: any) => u.role === 'teacher' && u.classCode === code
+        );
+        if (!teacherDoc) {
+          throw new Error('Invalid Class Code. No teacher found with this code.');
+        }
+        finalTeacherId = teacherDoc.uid;
+        finalClassCode = code;
+      }
+    } else {
+      // No Firestore — localStorage only
+      const users = getMockData('users');
+      const teacherDoc = users.find(
+        (u: any) => u.role === 'teacher' && u.classCode === code
+      );
+      if (!teacherDoc) {
+        throw new Error('Invalid Class Code. No teacher found with this code.');
+      }
+      finalTeacherId = teacherDoc.uid;
+      finalClassCode = code;
     }
-    finalTeacherId = teacherDoc.uid;
-    finalClassCode = classCodeOrJoinCode.toUpperCase();
   }
 
   const profile: UserProfile = {
@@ -140,6 +208,18 @@ export async function createUserProfile(
     createdAt: Date.now(),
   };
 
+  // Save to Firestore
+  if (db) {
+    try {
+      await setDoc(doc(db, 'users', user.uid), profile);
+      return profile;
+    } catch (err) {
+      console.warn('Firestore write failed, saving to localStorage:', err);
+    }
+  }
+
+  // localStorage fallback
+  const users = getMockData('users');
   const existingIndex = users.findIndex((u: any) => u.uid === user.uid);
   if (existingIndex > -1) {
     users[existingIndex] = profile;
@@ -147,34 +227,59 @@ export async function createUserProfile(
     users.push(profile);
   }
   setMockData('users', users);
-  
+
   return profile;
 }
+
+// ─── Materials Functions ───────────────────────────────────────────────────────
 
 // Create new learning material
 export async function createMaterial(
   teacherId: string,
   materialData: Omit<Material, 'id' | 'teacherId' | 'createdAt'>
 ): Promise<string> {
-  const materials = getMockData('materials');
-  const newId = 'mat_' + Math.random().toString(36).substr(2, 9);
-  
-  const newMaterial: Material = {
+  const newMaterial = {
     ...materialData,
-    id: newId,
     teacherId,
     createdAt: Date.now(),
   };
-  
-  materials.push(newMaterial);
+
+  if (db) {
+    try {
+      const docRef = await addDoc(collection(db, 'materials'), newMaterial);
+      return docRef.id;
+    } catch (err) {
+      console.warn('Firestore write failed, saving to localStorage:', err);
+    }
+  }
+
+  // localStorage fallback
+  const materials = getMockData('materials');
+  const newId = 'mat_' + Math.random().toString(36).substr(2, 9);
+  materials.push({ ...newMaterial, id: newId });
   setMockData('materials', materials);
   return newId;
 }
 
 // Fetch materials for a teacher
 export async function getTeacherMaterials(teacherId: string): Promise<Material[]> {
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'materials'),
+        where('teacherId', '==', teacherId),
+        orderBy('createdAt', 'desc')
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Material));
+    } catch (err) {
+      console.warn('Firestore read failed, using localStorage:', err);
+    }
+  }
   const materials = getMockData('materials');
-  return materials.filter((m: any) => m.teacherId === teacherId).sort((a: any, b: any) => b.createdAt - a.createdAt);
+  return materials
+    .filter((m: any) => m.teacherId === teacherId)
+    .sort((a: any, b: any) => b.createdAt - a.createdAt);
 }
 
 // Fetch materials for a student (using teacher's ID)
@@ -184,9 +289,23 @@ export async function getStudentMaterials(teacherId: string): Promise<Material[]
 
 // Fetch a single material by ID
 export async function getMaterial(materialId: string): Promise<Material | null> {
+  if (db) {
+    try {
+      const docRef = doc(db, 'materials', materialId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() } as Material;
+      }
+      return null;
+    } catch (err) {
+      console.warn('Firestore read failed, using localStorage:', err);
+    }
+  }
   const materials = getMockData('materials');
   return materials.find((m: any) => m.id === materialId) || null;
 }
+
+// ─── Student Response Functions ────────────────────────────────────────────────
 
 // Submit answers
 export async function submitStudentResponse(
@@ -211,11 +330,7 @@ export async function submitStudentResponse(
     }
   });
 
-  const responses = getMockData('studentResponses');
-  const newId = 'resp_' + Math.random().toString(36).substr(2, 9);
-
-  const responseDoc: StudentResponse = {
-    id: newId,
+  const responseDoc: Omit<StudentResponse, 'id'> = {
     studentId: studentProfile.uid,
     studentName: studentProfile.displayName,
     studentEmail: studentProfile.email,
@@ -228,14 +343,40 @@ export async function submitStudentResponse(
     completedAt: Date.now(),
   };
 
-  responses.push(responseDoc);
+  if (db) {
+    try {
+      const docRef = await addDoc(collection(db, 'studentResponses'), responseDoc);
+      return docRef.id;
+    } catch (err) {
+      console.warn('Firestore write failed, saving to localStorage:', err);
+    }
+  }
+
+  // localStorage fallback
+  const responses = getMockData('studentResponses');
+  const newId = 'resp_' + Math.random().toString(36).substr(2, 9);
+  responses.push({ ...responseDoc, id: newId });
   setMockData('studentResponses', responses);
-  
   return newId;
 }
 
 // Fetch results for teacher
 export async function getTeacherStudentResponses(teacherId: string): Promise<StudentResponse[]> {
+  if (db) {
+    try {
+      const q = query(
+        collection(db, 'studentResponses'),
+        where('teacherId', '==', teacherId),
+        orderBy('completedAt', 'desc')
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as StudentResponse));
+    } catch (err) {
+      console.warn('Firestore read failed, using localStorage:', err);
+    }
+  }
   const responses = getMockData('studentResponses');
-  return responses.filter((r: any) => r.teacherId === teacherId).sort((a: any, b: any) => b.completedAt - a.completedAt);
+  return responses
+    .filter((r: any) => r.teacherId === teacherId)
+    .sort((a: any, b: any) => b.completedAt - a.completedAt);
 }
