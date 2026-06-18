@@ -11,7 +11,6 @@ import {
   query,
   where,
   getDocs,
-  orderBy,
 } from 'firebase/firestore';
 
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
@@ -285,11 +284,12 @@ export async function getTeacherMaterials(teacherId: string): Promise<Material[]
     try {
       const q = query(
         collection(db, 'materials'),
-        where('teacherId', '==', teacherId),
-        orderBy('createdAt', 'desc')
+        where('teacherId', '==', teacherId)
       );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Material));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Material))
+        .sort((a, b) => b.createdAt - a.createdAt);
     } catch (err) {
       console.warn('Firestore read failed, using localStorage:', err);
     }
@@ -384,11 +384,12 @@ export async function getTeacherStudentResponses(teacherId: string): Promise<Stu
     try {
       const q = query(
         collection(db, 'studentResponses'),
-        where('teacherId', '==', teacherId),
-        orderBy('completedAt', 'desc')
+        where('teacherId', '==', teacherId)
       );
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as StudentResponse));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as StudentResponse))
+        .sort((a, b) => b.completedAt - a.completedAt);
     } catch (err) {
       console.warn('Firestore read failed, using localStorage:', err);
     }
