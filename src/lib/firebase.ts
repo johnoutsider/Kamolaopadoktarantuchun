@@ -107,6 +107,23 @@ const setMockData = (key: string, data: any) => {
   }
 };
 
+// Strips undefined values from objects so Firestore doesn't reject them
+function stripUndefined(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(stripUndefined);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    const clean: any = {};
+    for (const key of Object.keys(obj)) {
+      if (obj[key] !== undefined) {
+        clean[key] = stripUndefined(obj[key]);
+      }
+    }
+    return clean;
+  }
+  return obj;
+}
+
 // Generates a unique 6-character uppercase alphanumeric code
 export function generateClassCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -211,7 +228,7 @@ export async function createUserProfile(
   // Save to Firestore
   if (db) {
     try {
-      await setDoc(doc(db, 'users', user.uid), profile);
+      await setDoc(doc(db, 'users', user.uid), stripUndefined(profile));
       return profile;
     } catch (err) {
       console.warn('Firestore write failed, saving to localStorage:', err);
@@ -246,10 +263,11 @@ export async function createMaterial(
 
   if (db) {
     try {
-      const docRef = await addDoc(collection(db, 'materials'), newMaterial);
+      const docRef = await addDoc(collection(db, 'materials'), stripUndefined(newMaterial));
       return docRef.id;
-    } catch (err) {
-      console.warn('Firestore write failed, saving to localStorage:', err);
+    } catch (err: any) {
+      console.error('Firestore write failed:', err?.message || err);
+      throw new Error('Failed to save material: ' + (err?.message || 'Firestore error. Check your Firestore rules.'));
     }
   }
 
@@ -345,7 +363,7 @@ export async function submitStudentResponse(
 
   if (db) {
     try {
-      const docRef = await addDoc(collection(db, 'studentResponses'), responseDoc);
+      const docRef = await addDoc(collection(db, 'studentResponses'), stripUndefined(responseDoc));
       return docRef.id;
     } catch (err) {
       console.warn('Firestore write failed, saving to localStorage:', err);
